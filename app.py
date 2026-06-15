@@ -142,7 +142,7 @@ AIで改善点を確認してから修正すると、質問や添削依頼の質
 
 keyword = st.text_input(
     "この記事で狙うキーワード",
-    placeholder="例：財布持たない 不便"
+    placeholder="例：横浜 ランチ おすすめ"
 )
 
 purpose = st.selectbox(
