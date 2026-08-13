@@ -11,6 +11,20 @@ st.set_page_config(
 )
 
 MAX_CHARS = 10000
+GEMINI_MODEL = "gemini-2.5-flash"
+PURPOSE_OPTIONS = [
+    "アドセンス収益（集客記事）",
+    "アフィリエイト成約（成約記事）",
+    "関連記事への内部リンク誘導",
+    "自分の商品・サービス販売",
+    "その他",
+]
+BLOG_LEVEL_OPTIONS = [
+    "初心者（記事作成にまだ慣れていない）",
+    "3ヶ月以上（基本は理解している）",
+    "1年以上（ある程度記事を書いている）",
+]
+TARGET_LENGTH_OPTIONS = [3500, 5000, 8000]
 
 # =========================
 # デザイン
@@ -57,7 +71,7 @@ def check_password():
 
     st.markdown('<div class="main-title">Newlife SEOアシスタント β版</div>', unsafe_allow_html=True)
     st.markdown(
-        '<div class="sub-title">Newlifeメンバー専用のAI記事チェックツールです。</div>',
+        '<div class="sub-title">Newlifeメンバー専用のAI記事作成・チェックツールです。</div>',
         unsafe_allow_html=True
     )
 
@@ -73,116 +87,50 @@ def check_password():
     return False
 
 
-if not check_password():
-    st.stop()
+def init_session_state():
+    defaults = {
+        "mode": "記事作成",
+        "outline": "",
+        "draft_article": "",
+        "review_article": "",
+        "create_keyword": "",
+        "review_keyword": "",
+        "create_purpose": PURPOSE_OPTIONS[0],
+        "review_purpose": PURPOSE_OPTIONS[0],
+        "create_blog_level": BLOG_LEVEL_OPTIONS[0],
+        "review_blog_level": BLOG_LEVEL_OPTIONS[0],
+        "flash_success": "",
+    }
+    for key, value in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = value
 
 
-# =========================
-# サイドバー
-# =========================
-with st.sidebar:
-    st.title("使い方")
-
-    st.write("""
-    1. 狙っているキーワードを入力  
-    2. 記事の目的を選択  
-    3. ブログ歴を選択  
-    4. 記事本文を貼り付け  
-    5. 「添削する」をクリック  
-    """)
-
-    st.divider()
-
-    st.subheader("使うタイミング")
-    st.write("""
-    記事を書いた後、公開前のセルフチェックとして使ってください。  
-    AIの指摘を見て修正してから、必要に応じて質問・添削依頼してください。
-    """)
-
-    st.divider()
-
-    st.subheader("利用上の注意")
-    st.markdown("""
-    <div style="color: #dc2626; font-weight: 700; line-height: 1.7;">
-    ・β版のため、まずは1日1〜3回を目安にご利用ください。<br>
-    ・たくさん使いたい方向けには、後日Newlife記事添削Gem版を案内予定です。
-    </div>
-    """, unsafe_allow_html=True)
-    st.info("""
-    このツールは、上位表示を狙うために、検索意図・構成・読者満足の観点から改善ポイントをチェックするものです。  
-    記事を自動で完成させるものではありません。
-    """)
-
-    
-    st.warning("""
-    ・AIによる一次チェックです。最終判断は、実際の検索結果・読者の悩み・ご自身の体験談をもとに行ってください。  
-    ・個人情報、ログイン情報、外部に共有したくない情報は入力しないでください。  
-    ・入力内容や添削結果は、このアプリ側では保存しません。ただし、AIによる処理のため、入力内容はGemini APIに送信されます。
-    """)
+def consume_flash_success():
+    message = st.session_state.get("flash_success", "")
+    if message:
+        st.success(message)
+        st.session_state.flash_success = ""
 
 
+def purpose_weight_text():
+    return """
+【記事目的ごとの重視点】
+・アドセンス収益（集客記事）の場合：
+読者満足、情報のわかりやすさ、滞在時間、関連記事への回遊を重視してください。
+
+・アフィリエイト成約（成約記事）の場合：
+購入前の不安、比較ポイント、デメリット、口コミ・体験談、自然な背中押しを重視してください。
+
+・関連記事への内部リンク誘導の場合：
+読者が次に知りたいこと、自然な文脈での内部リンク導線を重視してください。
+
+・自分の商品・サービス販売の場合：
+読者の悩み、信頼形成、押し売りにならない導線、申し込み前の不安解消を重視してください。
+"""
 
 
-# =========================
-# メイン画面
-# =========================
-st.markdown('<div class="main-title">Newlife SEOアシスタント β版</div>', unsafe_allow_html=True)
-st.markdown(
-    '<div class="sub-title">まずは「記事添削機能」からβ公開しています。キーワードと記事本文を入力すると、検索意図・構成・読者満足・収益導線の観点からAIが改善ポイントをチェックします。</div>',
-    unsafe_allow_html=True
-)
-
-st.markdown("""
-<div class="notice-box">
-<strong>おすすめの使い方：</strong><br>
-記事を書いたあとに、公開前のセルフチェックとして使ってください。<br>
-AIで改善点を確認してから修正すると、質問や添削依頼の質も上がります。
-</div>
-""", unsafe_allow_html=True)
-
-keyword = st.text_input(
-    "この記事で狙うキーワード",
-    placeholder="例：横浜 ランチ おすすめ"
-)
-
-purpose = st.selectbox(
-    "記事の目的",
-    [
-        "アドセンス収益（集客記事）",
-        "アフィリエイト成約（成約記事）",
-        "関連記事への内部リンク誘導",
-        "自分の商品・サービス販売",
-        "その他"
-    ]
-)
-
-blog_level = st.radio(
-    "ブログ歴",
-    [
-        "初心者（記事作成にまだ慣れていない）",
-        "3ヶ月以上（基本は理解している）",
-        "1年以上（ある程度記事を書いている）"
-    ],
-    horizontal=True
-)
-
-article = st.text_area(
-    "記事本文を貼り付けてください",
-    height=350,
-    placeholder="ここに記事本文を貼り付けてください"
-)
-
-char_count = len(article)
-st.caption(f"現在の文字数：{char_count}文字 / 上限：{MAX_CHARS}文字")
-
-if char_count > MAX_CHARS:
-    st.error("β版では1回あたり10,000文字までです。長い記事は、前半・後半に分けてチェックしてください。")
-
-
-# =========================
-# プロンプト作成
-# =========================
-def build_prompt(keyword, purpose, blog_level, article):
+def build_review_prompt(keyword, purpose, blog_level, article):
     return f"""
 あなたはNewlifeのSEO記事添削アシスタントです。
 初心者〜中級者のブロガーの記事を、Newlife講師が動画添削で話すような、やさしく具体的な口調で添削してください。
@@ -223,18 +171,7 @@ def build_prompt(keyword, purpose, blog_level, article):
 9. 内部リンクで読者の次の悩みに誘導できるか
 10. 記事の目的に合った導線になっているか
 
-【記事目的ごとの重視点】
-・アドセンス収益（集客記事）の場合：
-読者満足、情報のわかりやすさ、滞在時間、関連記事への回遊を重視してください。
-
-・アフィリエイト成約（成約記事）の場合：
-購入前の不安、比較ポイント、デメリット、口コミ・体験談、自然な背中押しを重視してください。
-
-・関連記事への内部リンク誘導の場合：
-読者が次に知りたいこと、自然な文脈での内部リンク導線を重視してください。
-
-・自分の商品・サービス販売の場合：
-読者の悩み、信頼形成、押し売りにならない導線、申し込み前の不安解消を重視してください。
+{purpose_weight_text()}
 
 【出力の長さ】
 出力は長くなりすぎないようにしてください。
@@ -282,41 +219,423 @@ H2/H3形式で、追加候補を3〜5個程度提案してください。
 """
 
 
-# =========================
-# Gemini実行
-# =========================
-if st.button("添削する", type="primary"):
-    if not keyword.strip():
-        st.error("狙うキーワードを入力してください。")
-        st.stop()
+def build_outline_prompt(keyword, purpose, blog_level, notes, target_length):
+    notes_block = notes.strip() if notes.strip() else "（特になし）"
+    return f"""
+あなたはNewlifeのSEO記事作成アシスタントです。
+初心者〜中級者のブロガー向けに、Newlife講師が動画添削で話すような、やさしく具体的な口調で「記事の構成案」を作ってください。
 
-    if not article.strip():
-        st.error("記事本文を入力してください。")
-        st.stop()
+【重要な口調】
+・断定しすぎず、「〜かなと思います」「〜すると良いと思います」を自然に使ってください。
+・過度にテンションの高い表現や、営業っぽい表現は避けてください。
+・初心者がこの構成のまま本文を書ける具体性にしてください。
 
-    if len(article) > MAX_CHARS:
-        st.error("β版では1回あたり10,000文字までです。長い記事は、前半・後半に分けてチェックしてください。")
-        st.stop()
+【入力情報】
+狙うキーワード：
+{keyword}
 
-    with st.spinner("AIが記事をチェックしています..."):
-        try:
-            client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
-            prompt = build_prompt(keyword, purpose, blog_level, article)
+記事の目的：
+{purpose}
 
-            response = client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=prompt
-            )
+ブログ歴：
+{blog_level}
 
-            st.success("添削が完了しました。")
-            st.markdown(response.text)
+独自の切り口・伝えたいこと（任意）：
+{notes_block}
 
-        except Exception as e:
-            error_text = str(e)
+目標文字数（本文）：
+約{target_length}文字
 
-            if "503" in error_text or "UNAVAILABLE" in error_text or "high demand" in error_text:
-                st.error("現在AIが混雑しているため、添削できませんでした。少し時間をおいて、もう一度お試しください。")
-            elif "API_KEY" in error_text or "api key" in error_text.lower():
-                st.error("AIの設定に問題がある可能性があります。管理者にご連絡ください。")
+{purpose_weight_text()}
+
+【構成案で必ず含めること】
+1. 想定読者
+2. 検索意図（知りたいこと／不安／次にしたい行動）
+3. タイトル案を3つ（狙うキーワードを自然に含める）
+4. 推奨タイトル（1つ選ぶ）
+5. H2/H3の見出し構成
+6. 各見出しで書く要点（箇条書き）
+7. 冒頭で先に答える結論の一文案
+8. 内部リンク・収益導線を置く位置の提案
+9. 体験談を入れるべき箇所（※本文では捏造禁止なので「要追記」と明記）
+
+【禁止】
+・架空の体験談や口コミを構成案に事実として書かない
+・薬機法・景表法に触れやすい断定表現の指示をしない
+
+【出力形式】
+Markdownで、そのまま編集しやすい構成案として出力してください。
+見出しは次の順を推奨します。
+
+# 想定読者
+# 検索意図
+# タイトル案
+# 推奨タイトル
+# 見出し構成と書く要点
+# 冒頭の結論案
+# 内部リンク・収益導線
+# 体験談を追記すべき箇所
+"""
+
+
+def build_draft_prompt(keyword, purpose, blog_level, notes, target_length, outline):
+    notes_block = notes.strip() if notes.strip() else "（特になし）"
+    return f"""
+あなたはNewlifeのSEO記事作成アシスタントです。
+確定した構成案に厳密に沿って、公開前に使える完成稿寄りのブログ記事本文を書いてください。
+Newlife講師が動画添削で話すような、やさしく具体的で実務的な文体にしてください。
+
+【文体】
+・です・ます調
+・結論先行（冒頭で検索意図の中心に答える）
+・一般論だけで終わらせず、比較軸・向き不向き・注意点・具体例を入れる
+・過度にテンションの高い表現や、営業っぽい煽りは避ける
+
+【入力情報】
+狙うキーワード：
+{keyword}
+
+記事の目的：
+{purpose}
+
+ブログ歴：
+{blog_level}
+
+独自の切り口・伝えたいこと（任意）：
+{notes_block}
+
+目標文字数：
+約{target_length}文字（前後15%程度まで可。極端に短くしない）
+
+確定構成案：
+{outline}
+
+{purpose_weight_text()}
+
+【厳守】
+1. 確定構成案の見出し順・意図を守る（勝手に大幅省略しない）
+2. 狙うキーワードをタイトル・見出し・本文に自然に入れる（詰め込み禁止）
+3. 架空の一人称体験談・架空の口コミ・捏造データは絶対に書かない
+4. 体験が必要な箇所は、次のマーカーを本文中に残す：
+   `[体験談を追記：ここにご自身の実体験・失敗談・感想を書いてください]`
+5. 健康・美容・収益保証などに触れる場合は断定せず、「個人差があります」「〜と言われています」など慎重な表現にする
+6. 記事の目的に合った導線を自然に入れる（押し売りしない）
+
+【出力形式】
+・Markdownの記事本文のみを出力する
+・最初にタイトル（# タイトル）
+・その後に導入文とH2/H3本文
+・構成案の解説文や「以下が本文です」などの前置きは不要
+"""
+
+
+def show_gemini_error(e, action_label="処理"):
+    error_text = str(e)
+    if "503" in error_text or "UNAVAILABLE" in error_text or "high demand" in error_text.lower():
+        st.error(f"現在AIが混雑しているため、{action_label}できませんでした。少し時間をおいて、もう一度お試しください。")
+    elif "API_KEY" in error_text or "api key" in error_text.lower():
+        st.error("AIの設定に問題がある可能性があります。管理者にご連絡ください。")
+    else:
+        st.error(f"エラーが発生しました。時間をおいて再度お試しください。解決しない場合は管理者にご連絡ください。")
+
+
+def generate_content(prompt):
+    client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
+    response = client.models.generate_content(
+        model=GEMINI_MODEL,
+        contents=prompt
+    )
+    return response.text
+
+
+def render_sidebar(mode):
+    with st.sidebar:
+        st.title("使い方")
+
+        if mode == "記事作成":
+            st.write("""
+            1. 狙っているキーワードを入力  
+            2. 記事の目的・ブログ歴を選択  
+            3. （任意）独自の切り口を入力  
+            4. 「構成案を作る」をクリック  
+            5. 構成を確認・編集する  
+            6. 「この構成で本文を書く」をクリック  
+            """)
+            st.divider()
+            st.subheader("使うタイミング")
+            st.write("""
+            記事をゼロから書くときの下書き作成に使ってください。  
+            できあがった本文は、必ずご自身の体験談を追記し、公開前に「記事添削」でチェックしてください。
+            """)
+            st.divider()
+            st.subheader("利用上の注意")
+            st.markdown("""
+            <div style="color: #dc2626; font-weight: 700; line-height: 1.7;">
+            ・β版のため、まずは1日1〜3回を目安にご利用ください。<br>
+            ・たくさん使いたい方向けには、後日Newlife記事添削Gem版を案内予定です。<br>
+            ・AI本文は下書きです。架空の体験談は入れません。ご自身の体験を追記してください。
+            </div>
+            """, unsafe_allow_html=True)
+            st.info("""
+            このツールは、検索意図に沿った構成と本文の下書きを作るものです。  
+            そのまま公開する完成品ではありません。
+            """)
+        else:
+            st.write("""
+            1. 狙っているキーワードを入力  
+            2. 記事の目的を選択  
+            3. ブログ歴を選択  
+            4. 記事本文を貼り付け  
+            5. 「添削する」をクリック  
+            """)
+            st.divider()
+            st.subheader("使うタイミング")
+            st.write("""
+            記事を書いた後、公開前のセルフチェックとして使ってください。  
+            AIの指摘を見て修正してから、必要に応じて質問・添削依頼してください。
+            """)
+            st.divider()
+            st.subheader("利用上の注意")
+            st.markdown("""
+            <div style="color: #dc2626; font-weight: 700; line-height: 1.7;">
+            ・β版のため、まずは1日1〜3回を目安にご利用ください。<br>
+            ・たくさん使いたい方向けには、後日Newlife記事添削Gem版を案内予定です。
+            </div>
+            """, unsafe_allow_html=True)
+            st.info("""
+            このツールは、上位表示を狙うために、検索意図・構成・読者満足の観点から改善ポイントをチェックするものです。  
+            記事を自動で完成させるものではありません。
+            """)
+
+        st.warning("""
+        ・AIによる一次サポートです。最終判断は、実際の検索結果・読者の悩み・ご自身の体験談をもとに行ってください。  
+        ・個人情報、ログイン情報、外部に共有したくない情報は入力しないでください。  
+        ・入力内容や生成結果は、このアプリ側では保存しません。ただし、AIによる処理のため、入力内容はGemini APIに送信されます。
+        """)
+
+
+def render_create_mode():
+    st.markdown(
+        '<div class="sub-title">キーワードから構成案をつくり、確認後に完成稿寄りの本文を生成します。体験談はご自身で追記し、公開前は「記事添削」でチェックしてください。</div>',
+        unsafe_allow_html=True
+    )
+    st.markdown("""
+    <div class="notice-box">
+    <strong>おすすめの使い方：</strong><br>
+    ①構成案を作る → ②見出しを自分用に直す → ③本文を書く → ④体験談を追記 → ⑤記事添削で最終チェック
+    </div>
+    """, unsafe_allow_html=True)
+
+    consume_flash_success()
+
+    keyword = st.text_input(
+        "この記事で狙うキーワード",
+        key="create_keyword",
+        placeholder="例：横浜 ランチ おすすめ"
+    )
+    purpose = st.selectbox(
+        "記事の目的",
+        PURPOSE_OPTIONS,
+        key="create_purpose"
+    )
+    blog_level = st.radio(
+        "ブログ歴",
+        BLOG_LEVEL_OPTIONS,
+        horizontal=True,
+        key="create_blog_level"
+    )
+    notes = st.text_area(
+        "独自の切り口・伝えたいこと（任意）",
+        height=100,
+        key="create_notes",
+        placeholder="例：子連れでも入りやすい店だけ紹介したい／失敗談を中心に書きたい"
+    )
+    target_length = st.selectbox(
+        "目標文字数",
+        TARGET_LENGTH_OPTIONS,
+        index=1,
+        format_func=lambda n: f"約{n:,}文字",
+        key="create_target_length"
+    )
+
+    if st.button("構成案を作る", type="primary"):
+        if not keyword.strip():
+            st.error("狙うキーワードを入力してください。")
+        else:
+            with st.spinner("AIが構成案を作成しています..."):
+                try:
+                    prompt = build_outline_prompt(
+                        keyword, purpose, blog_level, notes, target_length
+                    )
+                    outline_text = generate_content(prompt)
+                    st.session_state.outline = outline_text
+                    st.session_state.outline_editor = outline_text
+                    st.session_state.draft_article = ""
+                    st.session_state.flash_success = (
+                        "構成案ができました。内容を確認・編集してから本文を書いてください。"
+                    )
+                    st.rerun()
+                except Exception as e:
+                    show_gemini_error(e, "構成案の作成")
+
+    if st.session_state.outline:
+        st.subheader("構成案（編集できます）")
+        if "outline_editor" not in st.session_state:
+            st.session_state.outline_editor = st.session_state.outline
+
+        edited_outline = st.text_area(
+            "構成案",
+            height=420,
+            key="outline_editor",
+            label_visibility="collapsed"
+        )
+
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            write_clicked = st.button("この構成で本文を書く", type="primary")
+        with col2:
+            clear_clicked = st.button("構成案をクリア")
+
+        if clear_clicked:
+            st.session_state.outline = ""
+            st.session_state.draft_article = ""
+            if "outline_editor" in st.session_state:
+                del st.session_state.outline_editor
+            if "draft_copy_area" in st.session_state:
+                del st.session_state.draft_copy_area
+            st.rerun()
+
+        if write_clicked:
+            if not edited_outline.strip():
+                st.error("構成案が空です。先に構成案を作るか、内容を入力してください。")
             else:
-                st.error("エラーが発生しました。時間をおいて再度お試しください。解決しない場合は管理者にご連絡ください。")
+                st.session_state.outline = edited_outline
+                with st.spinner("AIが本文を書いています。完成稿寄りのため少し時間がかかります..."):
+                    try:
+                        prompt = build_draft_prompt(
+                            keyword,
+                            purpose,
+                            blog_level,
+                            notes,
+                            target_length,
+                            edited_outline
+                        )
+                        draft = generate_content(prompt)
+                        st.session_state.draft_article = draft
+                        st.session_state.draft_copy_area = draft
+                        st.session_state.flash_success = (
+                            "本文ができました。体験談マーカーを自分の体験に置き換えてから公開してください。"
+                        )
+                        st.rerun()
+                    except Exception as e:
+                        show_gemini_error(e, "本文の作成")
+
+    if st.session_state.draft_article:
+        st.subheader("生成された本文")
+        st.caption(f"文字数：{len(st.session_state.draft_article):,}文字")
+        st.markdown(st.session_state.draft_article)
+        if "draft_copy_area" not in st.session_state:
+            st.session_state.draft_copy_area = st.session_state.draft_article
+        st.text_area(
+            "コピー用本文",
+            height=280,
+            key="draft_copy_area"
+        )
+
+        if st.button("この本文を記事添削へ渡す"):
+            st.session_state.review_article = st.session_state.draft_article
+            st.session_state.review_keyword = st.session_state.create_keyword
+            st.session_state.review_purpose = st.session_state.create_purpose
+            st.session_state.review_blog_level = st.session_state.create_blog_level
+            st.session_state.mode = "記事添削"
+            st.rerun()
+
+
+def render_review_mode():
+    st.markdown(
+        '<div class="sub-title">キーワードと記事本文を入力すると、検索意図・構成・読者満足・収益導線の観点からAIが改善ポイントをチェックします。</div>',
+        unsafe_allow_html=True
+    )
+    st.markdown("""
+    <div class="notice-box">
+    <strong>おすすめの使い方：</strong><br>
+    記事を書いたあとに、公開前のセルフチェックとして使ってください。<br>
+    AIで改善点を確認してから修正すると、質問や添削依頼の質も上がります。
+    </div>
+    """, unsafe_allow_html=True)
+
+    keyword = st.text_input(
+        "この記事で狙うキーワード",
+        key="review_keyword",
+        placeholder="例：横浜 ランチ おすすめ"
+    )
+    purpose = st.selectbox(
+        "記事の目的",
+        PURPOSE_OPTIONS,
+        key="review_purpose"
+    )
+    blog_level = st.radio(
+        "ブログ歴",
+        BLOG_LEVEL_OPTIONS,
+        horizontal=True,
+        key="review_blog_level"
+    )
+    article = st.text_area(
+        "記事本文を貼り付けてください",
+        height=350,
+        key="review_article",
+        placeholder="ここに記事本文を貼り付けてください"
+    )
+
+    char_count = len(article)
+    st.caption(f"現在の文字数：{char_count}文字 / 上限：{MAX_CHARS}文字")
+
+    if char_count > MAX_CHARS:
+        st.error("β版では1回あたり10,000文字までです。長い記事は、前半・後半に分けてチェックしてください。")
+
+    if st.button("添削する", type="primary"):
+        if not keyword.strip():
+            st.error("狙うキーワードを入力してください。")
+            st.stop()
+
+        if not article.strip():
+            st.error("記事本文を入力してください。")
+            st.stop()
+
+        if len(article) > MAX_CHARS:
+            st.error("β版では1回あたり10,000文字までです。長い記事は、前半・後半に分けてチェックしてください。")
+            st.stop()
+
+        with st.spinner("AIが記事をチェックしています..."):
+            try:
+                prompt = build_review_prompt(keyword, purpose, blog_level, article)
+                result = generate_content(prompt)
+                st.success("添削が完了しました。")
+                st.markdown(result)
+            except Exception as e:
+                show_gemini_error(e, "添削")
+
+
+# =========================
+# アプリ本体
+# =========================
+if not check_password():
+    st.stop()
+
+init_session_state()
+
+st.markdown('<div class="main-title">Newlife SEOアシスタント β版</div>', unsafe_allow_html=True)
+
+mode = st.radio(
+    "モード",
+    ["記事作成", "記事添削"],
+    horizontal=True,
+    key="mode"
+)
+
+render_sidebar(mode)
+
+if mode == "記事作成":
+    render_create_mode()
+else:
+    render_review_mode()
