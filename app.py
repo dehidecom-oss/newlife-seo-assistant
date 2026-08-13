@@ -1,5 +1,6 @@
 import streamlit as st
 from google import genai
+from google.genai import types
 
 # =========================
 # 基本設定
@@ -219,16 +220,41 @@ H2/H3形式で、追加候補を3〜5個程度提案してください。
 """
 
 
-def build_outline_prompt(keyword, purpose, blog_level, notes, target_length):
+def build_serp_research_prompt(keyword, purpose, notes):
     notes_block = notes.strip() if notes.strip() else "（特になし）"
     return f"""
-あなたはNewlifeのSEO記事作成アシスタントです。
-初心者〜中級者のブロガー向けに、Newlife講師が動画添削で話すような、やさしく具体的な口調で「記事の構成案」を作ってください。
+あなたはSEOリサーチャーです。Google検索でキーワード「{keyword}」の現在の上位記事を調べ、構成設計用の調査メモを作ってください。
+必ずGoogle検索ツールを使い、実際の検索結果に基づいて書いてください。
 
-【重要な口調】
-・断定しすぎず、「〜かなと思います」「〜すると良いと思います」を自然に使ってください。
-・過度にテンションの高い表現や、営業っぽい表現は避けてください。
-・初心者がこの構成のまま本文を書ける具体性にしてください。
+【記事の目的】
+{purpose}
+
+【独自の切り口・伝えたいこと（任意）】
+{notes_block}
+
+【調査してまとめること】
+1. 想定される検索意図（知りたいこと／不安／次にしたい行動）
+2. 上位記事（目安5〜10件）で共通して書かれているトピック・見出し傾向
+3. 上位記事ごとの主なカバー内容（タイトルと要点）
+4. 上位では弱い／欠けている視点（個人ブログが足せる差別化）
+5. 検索意図に対して、構成に必ず入れるべき答え
+
+【出力形式】
+調査メモのみをMarkdownで出力してください。挨拶や励ましは不要です。
+"""
+
+
+def build_outline_prompt(keyword, purpose, blog_level, notes, target_length, serp_research):
+    notes_block = notes.strip() if notes.strip() else "（特になし）"
+    return f"""
+あなたはSEO記事の構成設計者です。
+下の「上位記事調査メモ」を使って、狙うキーワードの記事構成案だけを作成してください。
+
+【構成づくりのルール】
+1. 上位記事で重複して書かれている重要トピックは、構成に含める
+2. そのうえで、個人ブログならではのプラスアルファ（体験・具体例・判断基準・失敗回避など）を見出しで足す
+3. 先に検索意図を整理し、調査メモの答え合わせ結果を反映して構成をブラッシュアップする
+4. 読者が迷わず本文を書ける具体性にする（各見出しに書く要点を箇条書き）
 
 【入力情報】
 狙うキーワード：
@@ -246,9 +272,12 @@ def build_outline_prompt(keyword, purpose, blog_level, notes, target_length):
 目標文字数（本文）：
 約{target_length}文字
 
+【上位記事調査メモ】
+{serp_research}
+
 {purpose_weight_text()}
 
-【構成案で必ず含めること】
+【構成案に含める項目】
 1. 想定読者
 2. 検索意図（知りたいこと／不安／次にしたい行動）
 3. タイトル案を3つ（狙うキーワードを自然に含める）
@@ -257,15 +286,18 @@ def build_outline_prompt(keyword, purpose, blog_level, notes, target_length):
 6. 各見出しで書く要点（箇条書き）
 7. 冒頭で先に答える結論の一文案
 8. 内部リンク・収益導線を置く位置の提案
-9. 体験談を入れるべき箇所（※本文では捏造禁止なので「要追記」と明記）
+9. 体験談を入れるべき箇所（本文では捏造禁止なので「要追記」と明記）
 
-【禁止】
-・架空の体験談や口コミを構成案に事実として書かない
+【禁止（重要）】
+・構成案以外の文章を一切書かない
+・挨拶・導入トーク・励まし・締めの応援文は禁止
+・「構成案を作っていきましょう」「参考にして書いてみてください」「応援しています」などの会話文は禁止
+・Newlife、講師、添削、アシスタントなど運営・メタ言及は禁止
+・架空の体験談や口コミを事実として書かない
 ・薬機法・景表法に触れやすい断定表現の指示をしない
 
 【出力形式】
-Markdownで、そのまま編集しやすい構成案として出力してください。
-見出しは次の順を推奨します。
+構成案のMarkdownのみ。次の見出し順で出力してください。前置き・後書きは不要です。
 
 # 想定読者
 # 検索意図
@@ -281,15 +313,15 @@ Markdownで、そのまま編集しやすい構成案として出力してくだ
 def build_draft_prompt(keyword, purpose, blog_level, notes, target_length, outline):
     notes_block = notes.strip() if notes.strip() else "（特になし）"
     return f"""
-あなたはNewlifeのSEO記事作成アシスタントです。
-確定した構成案に厳密に沿って、公開前に使える完成稿寄りのブログ記事本文を書いてください。
-Newlife講師が動画添削で話すような、やさしく具体的で実務的な文体にしてください。
+あなたはブログ記事の執筆者です。
+確定した構成案に厳密に沿って、一般読者向けの完成稿寄りのブログ記事本文だけを書いてください。
 
 【文体】
-・です・ます調
+・です・ます調の通常のブログ記事
 ・結論先行（冒頭で検索意図の中心に答える）
 ・一般論だけで終わらせず、比較軸・向き不向き・注意点・具体例を入れる
 ・過度にテンションの高い表現や、営業っぽい煽りは避ける
+・読者に直接語りかける自然な文章にする
 
 【入力情報】
 狙うキーワード：
@@ -321,11 +353,16 @@ Newlife講師が動画添削で話すような、やさしく具体的で実務�
 5. 健康・美容・収益保証などに触れる場合は断定せず、「個人差があります」「〜と言われています」など慎重な表現にする
 6. 記事の目的に合った導線を自然に入れる（押し売りしない）
 
+【絶対に書いてはいけない文言】
+・Newlife、講師、添削、アシスタント、動画添削などの運営・メタ言及
+・「お伝えしていきます」「一緒に見ていきましょう」「解説していきます」など講師口調のメタ文
+・構成案の説明、前置き、後書き、応援メッセージ
+・「以下が本文です」などの注釈
+
 【出力形式】
-・Markdownの記事本文のみを出力する
+・ブログ記事本文のMarkdownのみ
 ・最初にタイトル（# タイトル）
 ・その後に導入文とH2/H3本文
-・構成案の解説文や「以下が本文です」などの前置きは不要
 """
 
 
@@ -339,13 +376,41 @@ def show_gemini_error(e, action_label="処理"):
         st.error(f"エラーが発生しました。時間をおいて再度お試しください。解決しない場合は管理者にご連絡ください。")
 
 
-def generate_content(prompt):
+def generate_content(prompt, use_google_search=False):
     client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
+    config = None
+    if use_google_search:
+        config = types.GenerateContentConfig(
+            tools=[types.Tool(google_search=types.GoogleSearch())]
+        )
     response = client.models.generate_content(
         model=GEMINI_MODEL,
-        contents=prompt
+        contents=prompt,
+        config=config
     )
     return response.text
+
+
+def create_outline_with_serp_research(keyword, purpose, blog_level, notes, target_length):
+    """上位記事調査（内部）→ 構成案のみ生成。"""
+    research_prompt = build_serp_research_prompt(keyword, purpose, notes)
+    try:
+        serp_research = generate_content(research_prompt, use_google_search=True)
+    except Exception:
+        # 検索ツールが使えない場合は、検索なしで調査メモを作って継続する
+        fallback_prompt = research_prompt + """
+
+【補足】
+Google検索ツールが使えない場合は、一般的に想定される上位記事の傾向として調査メモを作成してください。
+その場合、冒頭に「※検索ツール未使用の推定メモ」と明記してください。
+"""
+        serp_research = generate_content(fallback_prompt, use_google_search=False)
+
+    outline_prompt = build_outline_prompt(
+        keyword, purpose, blog_level, notes, target_length, serp_research
+    )
+    outline_text = generate_content(outline_prompt, use_google_search=False)
+    return outline_text, serp_research
 
 
 def render_sidebar(mode):
@@ -357,7 +422,7 @@ def render_sidebar(mode):
             1. 狙っているキーワードを入力  
             2. 記事の目的・ブログ歴を選択  
             3. （任意）独自の切り口を入力  
-            4. 「構成案を作る」をクリック  
+            4. 「構成案を作る」をクリック（内部で上位記事も確認）  
             5. 構成を確認・編集する  
             6. 「この構成で本文を書く」をクリック  
             """)
@@ -462,12 +527,11 @@ def render_create_mode():
         if not keyword.strip():
             st.error("狙うキーワードを入力してください。")
         else:
-            with st.spinner("AIが構成案を作成しています..."):
+            with st.spinner("上位記事を調べて構成案を作成しています..."):
                 try:
-                    prompt = build_outline_prompt(
+                    outline_text, _serp_research = create_outline_with_serp_research(
                         keyword, purpose, blog_level, notes, target_length
                     )
-                    outline_text = generate_content(prompt)
                     st.session_state.outline = outline_text
                     st.session_state.outline_editor = outline_text
                     st.session_state.draft_article = ""
@@ -477,6 +541,8 @@ def render_create_mode():
                     st.rerun()
                 except Exception as e:
                     show_gemini_error(e, "構成案の作成")
+
+    consume_flash_success()
 
     if st.session_state.outline:
         st.subheader("構成案（編集できます）")
