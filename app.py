@@ -1,6 +1,7 @@
 import streamlit as st
 from google import genai
 from google.genai import types
+from pathlib import Path
 
 # =========================
 # 基本設定
@@ -26,6 +27,27 @@ BLOG_LEVEL_OPTIONS = [
     "1年以上（ある程度記事を書いている）",
 ]
 TARGET_LENGTH_OPTIONS = [3500, 5000, 8000]
+SUZUKI_RULES_PATH = Path(__file__).resolve().parent / "SUZUKI_RULES_PROMPT.md"
+
+
+@st.cache_data(show_spinner=False)
+def load_suzuki_rules_prompt():
+    if SUZUKI_RULES_PATH.exists():
+        return SUZUKI_RULES_PATH.read_text(encoding="utf-8").strip()
+    return ""
+
+
+def suzuki_rules_block():
+    rules = load_suzuki_rules_prompt()
+    if not rules:
+        return ""
+    return f"""
+【鈴木式SEO添削ルール（176件の添削から抽出・一般的SEOと矛盾するものは除外済み）】
+以下を記事作成・添削の判断基準として必ず反映してください。
+
+{rules}
+"""
+
 
 # =========================
 # デザイン
@@ -174,6 +196,8 @@ def build_review_prompt(keyword, purpose, blog_level, article):
 
 {purpose_weight_text()}
 
+{suzuki_rules_block()}
+
 【出力の長さ】
 出力は長くなりすぎないようにしてください。
 各項目は具体的に書きつつ、初心者が読み切れる分量にしてください。
@@ -239,6 +263,8 @@ def build_serp_research_prompt(keyword, purpose, notes):
 4. 上位では弱い／欠けている視点（個人ブログが足せる差別化）
 5. 検索意図に対して、構成に必ず入れるべき答え
 
+{suzuki_rules_block()}
+
 【出力形式】
 調査メモのみをMarkdownで出力してください。挨拶や励ましは不要です。
 """
@@ -279,6 +305,8 @@ def build_outline_prompt(keyword, purpose, blog_level, notes, target_length, ser
 {serp_research}
 
 {purpose_weight_text()}
+
+{suzuki_rules_block()}
 
 【構成案に含める項目】
 1. 想定読者
@@ -353,6 +381,8 @@ def build_draft_prompt(keyword, purpose, blog_level, notes, target_length, outli
 {outline}
 
 {purpose_weight_text()}
+
+{suzuki_rules_block()}
 
 【厳守】
 1. 確定構成案の見出し順・意図を守る（勝手に大幅省略しない）
