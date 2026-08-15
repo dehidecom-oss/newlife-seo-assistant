@@ -120,7 +120,6 @@ def init_session_state():
         "review_keyword": "",
         "create_purpose": PURPOSE_OPTIONS[0],
         "review_purpose": PURPOSE_OPTIONS[0],
-        "create_blog_level": BLOG_LEVEL_OPTIONS[0],
         "review_blog_level": BLOG_LEVEL_OPTIONS[0],
         "flash_success": "",
     }
@@ -270,7 +269,7 @@ def build_serp_research_prompt(keyword, purpose, notes):
 """
 
 
-def build_outline_prompt(keyword, purpose, blog_level, notes, target_length, serp_research):
+def build_outline_prompt(keyword, purpose, notes, target_length, serp_research):
     notes_block = notes.strip() if notes.strip() else "（特になし）"
     return f"""
 あなたはSEO記事の構成設計者です。
@@ -291,9 +290,6 @@ def build_outline_prompt(keyword, purpose, blog_level, notes, target_length, ser
 
 記事の目的：
 {purpose}
-
-ブログ歴：
-{blog_level}
 
 独自の切り口・伝えたいこと（任意）：
 {notes_block}
@@ -341,7 +337,7 @@ def build_outline_prompt(keyword, purpose, blog_level, notes, target_length, ser
 """
 
 
-def build_draft_prompt(keyword, purpose, blog_level, notes, target_length, outline):
+def build_draft_prompt(keyword, purpose, notes, target_length, outline):
     notes_block = notes.strip() if notes.strip() else "（特になし）"
     return f"""
 あなたは個人ブログの執筆者です。
@@ -367,9 +363,6 @@ def build_draft_prompt(keyword, purpose, blog_level, notes, target_length, outli
 
 記事の目的：
 {purpose}
-
-ブログ歴：
-{blog_level}
 
 独自の切り口・伝えたいこと（任意）：
 {notes_block}
@@ -435,7 +428,7 @@ def generate_content(prompt, use_google_search=False):
     return response.text
 
 
-def create_outline_with_serp_research(keyword, purpose, blog_level, notes, target_length):
+def create_outline_with_serp_research(keyword, purpose, notes, target_length):
     """上位記事調査（内部）→ 構成案のみ生成。"""
     research_prompt = build_serp_research_prompt(keyword, purpose, notes)
     try:
@@ -451,7 +444,7 @@ Google検索ツールが使えない場合は、一般的に想定される上�
         serp_research = generate_content(fallback_prompt, use_google_search=False)
 
     outline_prompt = build_outline_prompt(
-        keyword, purpose, blog_level, notes, target_length, serp_research
+        keyword, purpose, notes, target_length, serp_research
     )
     outline_text = generate_content(outline_prompt, use_google_search=False)
     return outline_text, serp_research
@@ -464,7 +457,7 @@ def render_sidebar(mode):
         if mode == "記事作成":
             st.write("""
             1. 狙っているキーワードを入力  
-            2. 記事の目的・ブログ歴を選択  
+            2. 記事の目的を選択  
             3. （任意）独自の切り口を入力  
             4. 「構成案を作る」をクリック（内部で上位記事も確認）  
             5. 構成を確認・編集する  
@@ -547,12 +540,6 @@ def render_create_mode():
         PURPOSE_OPTIONS,
         key="create_purpose"
     )
-    blog_level = st.radio(
-        "ブログ歴",
-        BLOG_LEVEL_OPTIONS,
-        horizontal=True,
-        key="create_blog_level"
-    )
     notes = st.text_area(
         "独自の切り口・伝えたいこと（任意）",
         height=100,
@@ -574,7 +561,7 @@ def render_create_mode():
             with st.spinner("上位記事を調べて構成案を作成しています..."):
                 try:
                     outline_text, _serp_research = create_outline_with_serp_research(
-                        keyword, purpose, blog_level, notes, target_length
+                        keyword, purpose, notes, target_length
                     )
                     st.session_state.outline = outline_text
                     st.session_state.outline_editor = outline_text
@@ -625,7 +612,6 @@ def render_create_mode():
                         prompt = build_draft_prompt(
                             keyword,
                             purpose,
-                            blog_level,
                             notes,
                             target_length,
                             edited_outline
@@ -656,7 +642,6 @@ def render_create_mode():
             st.session_state.review_article = st.session_state.draft_article
             st.session_state.review_keyword = st.session_state.create_keyword
             st.session_state.review_purpose = st.session_state.create_purpose
-            st.session_state.review_blog_level = st.session_state.create_blog_level
             st.session_state.mode = "記事添削"
             st.rerun()
 
