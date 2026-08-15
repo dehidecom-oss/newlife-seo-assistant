@@ -12,7 +12,6 @@ st.set_page_config(
     layout="wide"
 )
 
-MAX_CHARS = 10000
 GEMINI_MODEL = "gemini-2.5-flash"
 PURPOSE_OPTIONS = [
     "アドセンス収益（集客記事）",
@@ -690,10 +689,7 @@ def render_review_mode():
     )
 
     char_count = len(article)
-    st.caption(f"現在の文字数：{char_count}文字 / 上限：{MAX_CHARS}文字")
-
-    if char_count > MAX_CHARS:
-        st.error("β版では1回あたり10,000文字までです。長い記事は、前半・後半に分けてチェックしてください。")
+    st.caption(f"現在の文字数：{char_count:,}文字")
 
     if st.button("添削する", type="primary"):
         if not keyword.strip():
@@ -702,10 +698,6 @@ def render_review_mode():
 
         if not article.strip():
             st.error("記事本文を入力してください。")
-            st.stop()
-
-        if len(article) > MAX_CHARS:
-            st.error("β版では1回あたり10,000文字までです。長い記事は、前半・後半に分けてチェックしてください。")
             st.stop()
 
         with st.spinner("AIが記事をチェックしています..."):
