@@ -135,6 +135,13 @@ def consume_flash_success():
         st.session_state.flash_success = ""
 
 
+def apply_pending_mode():
+    """ウィジェット描画前にモード切替を適用する（radio key=mode 衝突回避）。"""
+    pending = st.session_state.pop("pending_mode", None)
+    if pending:
+        st.session_state.mode = pending
+
+
 def purpose_weight_text():
     return """
 【記事目的ごとの重視点】
@@ -642,7 +649,7 @@ def render_create_mode():
             st.session_state.review_article = st.session_state.draft_article
             st.session_state.review_keyword = st.session_state.create_keyword
             st.session_state.review_purpose = st.session_state.create_purpose
-            st.session_state.mode = "記事添削"
+            st.session_state.pending_mode = "記事添削"
             st.rerun()
 
 
@@ -718,6 +725,7 @@ if not check_password():
     st.stop()
 
 init_session_state()
+apply_pending_mode()
 
 st.markdown('<div class="main-title">Newlife SEOアシスタント β版</div>', unsafe_allow_html=True)
 
